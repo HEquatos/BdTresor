@@ -1,6 +1,9 @@
 import streamlit as st
 
-
+def calcul(x):
+    print("Voila")
+    return x+4
+    
 def main():
     st.title('Taux de Bons du Trésor')
 
@@ -17,7 +20,9 @@ def main():
     # Bouton pour valider les modifications
     if st.button('Valider'):
         # Ajoutez ici la logique pour traiter les données saisies et effectuer les calculs nécessaires
-
+        test=calcul(amc)
+        print(test)
+        
         # Exemple : affichage des données saisies
         st.write('AMC:', amc)
         st.write('Date de valorisation:', dv)
