@@ -23,7 +23,7 @@ def main():
         # Ajoutez ici la logique pour traiter les données saisies et effectuer les calculs nécessaires
         test=calcul(amc)
         print(test)
-        
+        st.write(test)
         # Exemple : affichage des données saisies
         st.write('AMC:', amc)
         st.write('Date de valorisation:', dv)
