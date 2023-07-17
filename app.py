@@ -1,6 +1,7 @@
 import streamlit as st
 
 def calcul(x):
+    x=int(x)
     print("Voila")
     return x+4
     
