@@ -1,5 +1,5 @@
 import streamlit as st
-import pandas as pd
+
 
 def main():
     st.title('Taux de Bons du Trésor')
