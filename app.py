@@ -1,11 +1,6 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import http.client, urllib.request, urllib.parse, urllib.error, base64
-import pandas as pd
-import ast
-import html5lib
-
 
 # On ouvre la base de donnée teleadju et on la traite Elle va être utile 
 # avec l'AMC pour trouver la date decheance donc la maturité resiudelle
