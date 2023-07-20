@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
+
+
 # On ouvre la base de donnée teleadju et on la traite Elle va être utile 
 # avec l'AMC pour trouver la date decheance donc la maturité resiudelle
 # et donc les bornes entre lesquelles interpoller
@@ -35,7 +37,7 @@ def open_amc_db(filepath):
 
 filepath='./TeleAdjudication (14).xls'
 amc_db=open_amc_db(filepath)
-print(amc_db)
+
 
 # On trouve l'échéance du bond avec son amc
 def get_echeance(amc):
@@ -44,7 +46,7 @@ def get_echeance(amc):
     date_echeance = line_of_interest['Date echeance'].values[0]
     return date_echeance
 
-# print(get_echeance(200709))
+
 
 # On trouve la maturité résiduelle d'un bond avec son amc
 
@@ -99,7 +101,7 @@ def get_courbe_data(date):
 date_input = pd.to_datetime("2023-07-03")
 date_input= pd.to_datetime(date_input)
 courbe_data = get_courbe_data(date_input)
-print(courbe_data)
+# print(courbe_data)
 
 
 def get_taux_courbe(date_courbe, bond_maturation, date_valeur):
@@ -132,31 +134,163 @@ def get_taux_courbe(date_courbe, bond_maturation, date_valeur):
 
     return taux
 
+# date_valo= pd.to_datetime("2025-07-03")
+# print(get_taux_courbe(date_input,5, date_valo))
 
-print(get_taux_courbe(date_input,5, date_input))
+
+## On passe à la partie trader, avant on ne regardait que le point de vue BAM.
+## Avant les taux étaient donnés par BAM maintenant le trader va donner ses taux à partir des infos qu'ils récupèrent du marché auprès
+## de son carnet d'adresse.
+## A partir de ces taux on va interpoler le taux à donner pour le bon d'intérêt.
+
+### On trouve les bornes entre lesquelles notre maturite se trouve 
+ 
+def bornes_interpolation(maturite):
+    # Define a list of specific bond maturities for interpolation
+    common_maturities = [0.25, 0.5, 1, 2, 5, 10, 15, 20, 30]  # Years
+
+    # Find the index of the largest common maturity that is smaller than the given bond maturity
+    index = 0
+    while index < len(common_maturities) and common_maturities[index] < maturite:
+        index += 1
+
+    # Determine the lower and upper bounds for interpolation
+    lower_maturity = common_maturities[index - 1] if index > 0 else None
+    upper_maturity = common_maturities[index] if index < len(common_maturities) else None
+
+    return lower_maturity, upper_maturity
+
+def hash_maturity_to_string(maturity):
+    common_maturities = [0.25, 0.5, 1, 2, 5, 10, 15, 20, 30]
+    maturity_strings = ["13 semaines", "26 semaines", "52 semaines","2 ans", "5 ans", "10 ans", "15 ans", "20 ans", "30 ans"]
+
+    # Find the index of the maturity in the common_maturities list
+    index = common_maturities.index(maturity) if maturity in common_maturities else -1
+
+    # If the maturity is found in the list, return the associated string
+    if index != -1:
+        return maturity_strings[index]
+
+    # If the maturity is not found, return a default string
+    return "Unknown Maturity"
+
+def get_maturite_days(maturite_years):
+    # Calculate the maturite (remaining maturity) in days based on maturite_years
+    days_per_year = 365.25  # Consider leap years
+    if maturite_years==None:
+        maturite_years=0
+    return maturite_years * days_per_year
+
+def get_rate_interpolation(bond_maturity,lower_maturity,upper_maturity,lower_rate,upper_rate):
+    
+    return np.interp(bond_maturity, [lower_maturity, upper_maturity], [lower_rate, upper_rate])
+
+
+class SessionState:
+    def __init__(self):
+        self._state = {}
+
+    def __getattr__(self, name):
+        return self._state.get(name)
+
+    def __setattr__(self, name, value):
+        self._state[name] = value
+
+    def clear(self):
+        self._state.clear()
+
 
 def main():
+    # interpolated_rate=0
+
     # Titre en grand Pricer bons du trésor
     st.title("Pricer bons du trésor")
 
     # Champ d'entrée pour l'AMC
     amc = st.text_input("Entrez l'AMC de l'obligation")
+    
 
     # Champ d'entrée pour la date de valorisation
     date_valeur = st.date_input("Sélectionnez la date de valorisation")
 
     # Champ d'entrée pour la date de courbe
     date_courbe = st.date_input("Sélectionnez la date de la courbe des taux")
+    if amc:
+        # Display the table header
+        st.subheader("Table des bornes pour l'interpolation")
+        bond_maturity=get_maturite_residuellle(amc,date_valeur)
+        # Create the DataFrame for the table
+        table_data = pd.DataFrame(columns=["Maturité (années)", "Maturité (jours)", "Taux(%)"])
+        
+        bond_maturity = get_maturite_residuellle(amc, date_valeur)
+        lower_maturity, upper_maturity = bornes_interpolation(bond_maturity)
 
+        # Calculate the days for bond_maturity and bounds
+        bond_maturity_days = get_maturite_days(bond_maturity)
+        lower_maturity_days = get_maturite_days(lower_maturity)
+        upper_maturity_days = get_maturite_days(upper_maturity)
+        
+        lower_maturity_string= hash_maturity_to_string(lower_maturity)
+        upper_maturity_string= hash_maturity_to_string(upper_maturity)
+        
+        lower_rate=None
+        upper_rate= None
+        interpolated_rate=None
+        
+        if not lower_rate:
+        #     # Now update the DataFrame for the table with the new rate values
+            table_data = table_data.append({"Maturité (années)": lower_maturity_string, "Maturité (jours)": lower_maturity_days, "Taux(%)": 0.0}, ignore_index=True)
+            
+        if not upper_rate and not interpolated_rate:
+
+            table_data = table_data.append({"Maturité (années)": bond_maturity, "Maturité (jours)": bond_maturity_days, "Taux(%)": 0.0}, ignore_index=True)
+            table_data = table_data.append({"Maturité (années)": upper_maturity_string, "Maturité (jours)": upper_maturity_days, "Taux(%)": 0.0}, ignore_index=True)
+
+
+        # Use session_state to get the rate values
+        lower_rate = st.number_input("Entrez le taux pour un "+ lower_maturity_string+"(Taux en %)", 
+                            min_value=0.0,  # Set to None to leave it unrestricted
+                            max_value=100.0,  # Set to None to leave it unrestricted
+                            step=0.0001,  # Set the step increment
+                            format="%.4f")  # Format the number to display 4 decimal places
+
+        upper_rate = st.number_input("Entrez le taux pour un "+upper_maturity_string+"(Taux en %)", 
+                            min_value=float(0),  # Set to None to leave it unrestricted
+                            max_value=float(100),  # Set to None to leave it unrestricted
+                            step=0.0001,  # Set the step increment
+                            format="%.4f")  # Format the number to display 4 decimal places
+
+        # Calculate and display the interpolated rate for the bond maturity
+        if lower_rate:
+            # Now update the DataFrame for the table with the new rate values
+            table_data.loc[table_data['Maturité (années)'] == lower_maturity_string, 'Taux(%)'] = lower_rate
+        if upper_rate:
+            table_data.loc[table_data['Maturité (années)'] == upper_maturity_string, 'Taux(%)'] = upper_rate
+            
+        if lower_rate  and upper_rate :
+            interpolated_rate = get_rate_interpolation(bond_maturity, lower_maturity, upper_maturity, lower_rate, upper_rate)
+            # Now update the DataFrame for the table with the new rate values
+
+            table_data.loc[table_data['Maturité (années)'] == bond_maturity, 'Taux(%)'] = interpolated_rate
+
+        # Display the updated table
+        st.table(table_data)
+
+        if interpolated_rate:
+            st.success(f"Le taux de RENDEMENT INTERPOLE : {interpolated_rate/100:.4%}")
+            
+            
     # Bouton pour valider les modifications
-    if st.button("Calculer le rendement"):
+    if st.button("Calculer le taux à la courbe"):
         try:
-            bond_maturation = get_maturite_residuellle(amc, date_valeur)
-            taux = get_taux_courbe(date_courbe, bond_maturation, date_valeur)
-            st.success(f"Le taux de rendement de l'obligation à la courbe est : {taux:.4%}")
+            bond_maturity = get_maturite_residuellle(amc, date_valeur)
+            taux = get_taux_courbe(date_courbe, bond_maturity, date_valeur)
+            st.success(f"Le taux de rendement de l'obligation à la COURBE est : {taux:.4%}")
         except Exception as e:
-            st.error("Une erreur s'est produite lors du calcul du taux.")
             st.error(f"Message d'erreur : {e}")
+
+
+
 
 if __name__ == '__main__':
     main()
