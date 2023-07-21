@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import functools
 
 
 
@@ -32,12 +33,17 @@ def open_amc_db(filepath):
     }
 
     # Rename the columns using the mapping
+    db.drop(columns=['Taux Nominal %', 'Valeur Nominale ', 'Encours',
+                     'Taux Issu de la Courbe %', 'Prix Pied de Coupon %',
+                     'Coupon Couru Unitaire', 'Prix', 'Applicable', 'Code ISIN', 'Date Courbe'], inplace=True)
     db.rename(columns=column_mapping, inplace=True)
     return db
 
-filepath='./TeleAdjudication (14).xls'
-amc_db=open_amc_db(filepath)
+# filepath='./TeleAdjudication (14).xls'
+# amc_db=open_amc_db(filepath)
+#amc_db.to_pickle('./TeleAdjudication.pkl')
 
+amc_db= pd.read_pickle('./TeleAdjudication.pkl')
 
 # On trouve l'échéance du bond avec son amc
 def get_echeance(amc):
@@ -64,7 +70,7 @@ def get_maturite_residuellle(amc, date_valeur):
 # permettre d'obtenir le taux à la courbe à partir de la DV choisie
 
 
-
+@functools.lru_cache(maxsize=128)  # Maxsize sets the number of function calls to cache
 def get_courbe_data(date):
     
     # Format the date as DD%2FMM%2FYYYY
@@ -98,12 +104,12 @@ def get_courbe_data(date):
     return courbe_data
 
 # Example usage:
-date_input = pd.to_datetime("2023-07-03")
+date_input = pd.to_datetime("2023-07-20")
 date_input= pd.to_datetime(date_input)
 courbe_data = get_courbe_data(date_input)
-# print(courbe_data)
+print(courbe_data)
 
-
+@functools.lru_cache(maxsize=128)  # Maxsize sets the number of function calls to cache
 def get_taux_courbe(date_courbe, bond_maturation, date_valeur):
     courbe_data = get_courbe_data(date_courbe)
 
@@ -113,38 +119,45 @@ def get_taux_courbe(date_courbe, bond_maturation, date_valeur):
 
     # Add a column 'maturation' as the difference between the Date echeance and date_valeur in years
     courbe_data['maturation'] = (courbe_data['Date echeance'] - pd.to_datetime(date_valeur)).dt.days / 365.25
-    print(courbe_data)
+
     # Sort the DataFrame by the 'maturation' column
     courbe_data = courbe_data.sort_values(by='maturation')
-    # print(courbe_data)
+
+    # Calculate the slopes (rate of change) between consecutive maturities and corresponding interest rates
+    courbe_data['slope'] = courbe_data['tmp'].diff() / courbe_data['maturation'].diff()
+
     # Find the two closest maturities that surround the bond_maturation
     lower_maturity = courbe_data[courbe_data['maturation'] <= bond_maturation]['maturation'].max()
     upper_maturity = courbe_data[courbe_data['maturation'] >= bond_maturation]['maturation'].min()
-    print(lower_maturity,upper_maturity)
-    # If bond_maturation is outside the range, use the closest maturity
+
     if pd.isnull(lower_maturity):
-        taux = courbe_data.loc[courbe_data['maturation'] == upper_maturity, 'tmp'].iloc[0]
+        # Use the last calculated slope to project the new interest rate
+        last_slope = courbe_data['slope'].iloc[-1]
+        taux = courbe_data.loc[courbe_data['maturation'] == upper_maturity, 'tmp'].iloc[0] + last_slope * (bond_maturation - upper_maturity)
     elif pd.isnull(upper_maturity):
-        taux = courbe_data.loc[courbe_data['maturation'] == lower_maturity, 'tmp'].iloc[0]
+        # Use the first calculated slope to project the new interest rate
+        first_slope = courbe_data['slope'].iloc[0]
+        taux = courbe_data.loc[courbe_data['maturation'] == lower_maturity, 'tmp'].iloc[0] + first_slope * (bond_maturation - lower_maturity)
     else:
-        # Interpolate the rate for the given bond_maturation
+        # Interpolate the rate for the given bond_maturation as before
         lower_taux = courbe_data.loc[courbe_data['maturation'] == lower_maturity, 'tmp'].iloc[0]
         upper_taux = courbe_data.loc[courbe_data['maturation'] == upper_maturity, 'tmp'].iloc[0]
         taux = np.interp(bond_maturation, [lower_maturity, upper_maturity], [lower_taux, upper_taux])
 
     return taux
 
-# date_valo= pd.to_datetime("2025-07-03")
-# print(get_taux_courbe(date_input,5, date_valo))
+date_valo= pd.to_datetime("2025-07-20")
+print(get_taux_courbe(date_input,5, date_valo))
 
 
-## On passe à la partie trader, avant on ne regardait que le point de vue BAM.
-## Avant les taux étaient donnés par BAM maintenant le trader va donner ses taux à partir des infos qu'ils récupèrent du marché auprès
-## de son carnet d'adresse.
-## A partir de ces taux on va interpoler le taux à donner pour le bon d'intérêt.
+# On passe à la partie trader, avant on ne regardait que le point de vue BAM.
+# Avant les taux étaient donnés par BAM maintenant le trader va donner ses taux à partir des infos qu'ils récupèrent du marché auprès
+# de son carnet d'adresse.
+# A partir de ces taux on va interpoler le taux à donner pour le bon d'intérêt.
 
-### On trouve les bornes entre lesquelles notre maturite se trouve 
+## On trouve les bornes entre lesquelles notre maturite se trouve 
  
+@functools.lru_cache(maxsize=128)  # Maxsize sets the number of function calls to cache
 def bornes_interpolation(maturite):
     # Define a list of specific bond maturities for interpolation
     common_maturities = [0.25, 0.5, 1, 2, 5, 10, 15, 20, 30]  # Years
@@ -160,6 +173,7 @@ def bornes_interpolation(maturite):
 
     return lower_maturity, upper_maturity
 
+@functools.lru_cache(maxsize=9)  # Maxsize sets the number of function calls to cache
 def hash_maturity_to_string(maturity):
     common_maturities = [0.25, 0.5, 1, 2, 5, 10, 15, 20, 30]
     maturity_strings = ["13 semaines", "26 semaines", "52 semaines","2 ans", "5 ans", "10 ans", "15 ans", "20 ans", "30 ans"]
@@ -283,7 +297,7 @@ def main():
     # Bouton pour valider les modifications
     if st.button("Calculer le taux à la courbe"):
         try:
-            bond_maturity = get_maturite_residuellle(amc, date_valeur)
+            
             taux = get_taux_courbe(date_courbe, bond_maturity, date_valeur)
             st.success(f"Le taux de rendement de l'obligation à la COURBE est : {taux:.4%}")
         except Exception as e:
