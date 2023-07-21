@@ -49,6 +49,9 @@ amc_db= pd.read_pickle('./TeleAdjudication.pkl')
 def get_echeance(amc):
     amc=str(amc)
     line_of_interest=amc_db[amc_db['AMC']==amc]
+    # Check if line_of_interest is empty before accessing the data
+    if line_of_interest.empty:
+        return None
     date_echeance = line_of_interest['Date echeance'].values[0]
     return date_echeance
 
