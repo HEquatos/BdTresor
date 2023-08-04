@@ -333,9 +333,8 @@ def main():
         clean = clean_price(taux_nominal_100, taux_trader_100, bond_maturity, nominal,date_valeur,date_emission)
         st.success(f" Clean Price : {clean} MAD")
         
-        quantity = 0
-        quantity=st.number_input("Combien échangez-vous?",
-                                     value=0)
+        #quantity = 0
+        #quantity=st.number_input("Combien échangez-vous?", value=0)
 
 
 
