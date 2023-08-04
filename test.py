@@ -23,6 +23,8 @@ def get_duree_dernier_coupon(date_valeur, date_emission):
     else:
         date_dernier_coupon = date_emission.replace(year=date_valeur.year - 1)
 
+    # Convertir date_dernier_coupon en datetime.datetime
+    date_dernier_coupon = date_dernier_coupon.replace(hour=0, minute=0, second=0, microsecond=0)
     # Calcul de la durée écoulée en jours depuis le dernier paiement
     duree_ecoule = (date_valeur - date_dernier_coupon).days
     duree_ecoule_years = duree_ecoule / 365
