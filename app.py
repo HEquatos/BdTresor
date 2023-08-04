@@ -23,8 +23,8 @@ amc_db=open_amc_db(filepath_adju)
 
 
 
-filepath_portfolio="./Input_Codexlsx.xlsx"
-portfolio= open_portfolio(filepath_portfolio)
+#filepath_portfolio="./Input_Codexlsx.xlsx"
+#portfolio= open_portfolio(filepath_portfolio)
 
 
 # On trouve l'échéance du bond avec son amc
