@@ -193,56 +193,6 @@ def get_rate_interpolation(bond_maturity,lower_maturity,upper_maturity,lower_rat
     return np.interp(bond_maturity, [lower_maturity, upper_maturity], [lower_rate, upper_rate])
 
 
-def get_pmp_one(amc, portfolio):
-    amc = int(amc)
-    # Filter the DataFrame based on the specified AMC value
-    line_of_interest = portfolio[portfolio['AMC'] == amc]
-
-    if not line_of_interest.empty:
-        # Check if Trading.2 is not empty and return its value as PMP
-        if line_of_interest['Trading.2'].any() and line_of_interest['Trading.2'].values[0] != 0:
-            return line_of_interest['Trading.2'].values[0]
-
-        # Check if Market Making.2 is not empty and return its value as PMP
-        elif line_of_interest['Market Making.2'].any() and line_of_interest['Market Making.2'].values[0] != 0:
-            return line_of_interest['Market Making.2'].values[0]
-
-        # Check if Hedge.2 is not empty and return its value as PMP
-        elif line_of_interest['Hedge.2'].any() and line_of_interest['Hedge.2'].values[0] != 0:
-            return line_of_interest['Hedge.2'].values[0]
-
-    # Return None if none of the conditions above are met or if AMC is not found
-    return None
-
-print(get_pmp_one(201810, portfolio))
-
-def get_pmp_mean(amc, portfolio):
-    amc = int(amc)
-    # Filter the DataFrame based on the specified AMC value
-    line_of_interest = portfolio[portfolio['AMC'] == amc]
-
-    if not line_of_interest.empty:
-        quantity_trading = line_of_interest['Trading'].values[0]
-        pmp_trading = line_of_interest['Trading.2'].values[0]
-
-        quantity_market_making = line_of_interest['Market Making'].values[0]
-        pmp_market_making = line_of_interest['Market Making.2'].values[0]
-
-        quantity_hedge = line_of_interest['Hedge'].values[0]
-        pmp_hedge = line_of_interest['Hedge.2'].values[0]
-
-        sum_pmp = pmp_trading * quantity_trading + pmp_market_making * quantity_market_making + pmp_hedge * quantity_hedge
-        pmp = sum_pmp / (quantity_trading + quantity_market_making + quantity_hedge)
-
-        return pmp
-    
-    # Return None if AMC is not found
-    return None
-
-
-print(get_pmp_mean(201810,portfolio))
-
-
 
 
 
