@@ -5,11 +5,11 @@ from datetime import datetime, date
 
 def get_duree_dernier_coupon(date_valeur, date_emission):
 # Convertir les dates en objets datetime
-    if not isinstance(date_valeur, date):
-        date_valeur = datetime.strptime(date_valeur, "%d/%m/%Y").date()  # Assuming date_valeur is in ISO format "YYYY-MM-DD"
-    if not isinstance(date_emission, date):
-        date_emission = datetime.strptime(date_emission, "%d/%m/%Y").date()  # Assuming date_emission is in ISO format "YYYY-MM-DD"
-        
+    if not isinstance(date_valeur, datetime):
+        date_valeur = datetime.combine(date_valeur, datetime.min.time())
+
+    if not isinstance(date_emission, datetime):
+        date_emission = datetime.strptime(date_emission, "%Y-%m-%d %H:%M:%S")
         
         
     # Vérification de la date du dernier coupon
@@ -22,15 +22,8 @@ def get_duree_dernier_coupon(date_valeur, date_emission):
             date_dernier_coupon = date_emission.replace(year=date_valeur.year - 1)
     else:
         date_dernier_coupon = date_emission.replace(year=date_valeur.year - 1)
-
-    # Convertir date_dernier_coupon en datetime.datetime
-    date_dernier_coupon = date_dernier_coupon.replace(hour=0, minute=0, second=0, microsecond=0)
+    print("date dernier coupon :",date_dernier_coupon)
     # Calcul de la durée écoulée en jours depuis le dernier paiement
-    if not isinstance(date_valeur, datetime):
-        date_valeur = datetime.strptime(date_valeur, "%Y-%m-%d %H:%M:%S")
-    if not isinstance(date_dernier_coupon, datetime):
-        date_dernier_coupon = datetime.combine(date_dernier_coupon, datetime.min.time())
-
     duree_ecoule = (date_valeur - date_dernier_coupon).days
     duree_ecoule_years = duree_ecoule / 365
     return duree_ecoule_years
@@ -38,13 +31,12 @@ def get_duree_dernier_coupon(date_valeur, date_emission):
 def present_value(taux_nominal, taux_courbe, maturite_residuelle, nominal):
     # Règle le problème de maturité non entière. On calcule ici la valeur nette actuelle
     # en revenant à la date du dernier coupon : la maturité devient entière !
-    print(taux_nominal)
+   
     if not isinstance(taux_nominal, float):
         taux_nominal= float(taux_nominal.replace(',', '.'))
     taux_courbe=float(taux_courbe)
 
-    print("TAUX NOM", taux_nominal)
-    print("Taux Courbe", taux_courbe)
+    
     # Si la maturité est décimale, on arrondit à l'entier supérieur pour le calcul.
     if int(maturite_residuelle) != maturite_residuelle:
         new_maturity = int(maturite_residuelle) + 1
@@ -56,8 +48,7 @@ def present_value(taux_nominal, taux_courbe, maturite_residuelle, nominal):
 
     # Création de la liste des coefficients d'actualisation pour chaque période.
     liste_coef = [1 / ((1 + taux_courbe) ** i) for i in range(1, new_maturity + 1)]
-    print("COEFS", liste_coef)
-    print("Coupon",coupon)
+    
     # Calcul de la valeur actuelle du principal à maturité.
     present_value_principal = nominal / ((1 + taux_courbe) ** new_maturity)
 
@@ -91,7 +82,7 @@ def dirty_price(taux_nominal, taux_courbe, maturite_residuelle, nominal,date_val
 
     # Vérifie si la maturité résiduelle est décimale
     if maturite_residuelle != int(maturite_residuelle):
-        
+        print("date_valeur",date_valeur,"date_emission",date_emission)
         duree_ecoule_years=get_duree_dernier_coupon(date_valeur,date_emission)
 
         # Calcul du dirty price en utilisant la partie décimale de la maturité résiduelle
