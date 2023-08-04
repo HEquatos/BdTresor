@@ -3,3 +3,4 @@ pandas==1.4.4
 numpy==1.23.3
 xlrd>=1.0.0
 lxml
+html5lib
