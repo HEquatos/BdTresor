@@ -4,6 +4,7 @@ import numpy as np
 import functools
 from test import get_duree_dernier_coupon, present_value, dirty_price,clean_price
 from corpusutils import open_amc_db, open_portfolio
+from bs4 import BeautifulSoup
 
 # On ouvre la base de donnée teleadju et on la traite Elle va être utile 
 # avec l'AMC pour trouver la date decheance donc la maturité resiudelle
