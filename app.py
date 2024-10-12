@@ -32,10 +32,12 @@ amc_db=open_amc_db(filepath_adju)
 
 # On trouve l'échéance du bond avec son amc
 def get_echeance(amc):
-    amc=str(amc)
-    line_of_interest=amc_db[amc_db['AMC']==amc]
-    date_echeance = line_of_interest['Date echeance'].values[0]
-    return date_echeance
+    amc = str(amc)
+    line_of_interest = amc_db[amc_db['AMC'] == amc]
+    if line_of_interest.empty:
+        raise ValueError(f"No bond found with AMC {amc}")
+    return line_of_interest['Date echeance'].values[0]
+
 
 def get_emission(amc):
     amc=str(amc)
