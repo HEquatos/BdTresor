@@ -9,4 +9,6 @@ requests==2.25.1
 selenium
 chromium
 webdriver-manager
+chromium-browser
+chromium-chromedriver
 
