@@ -93,8 +93,8 @@ def get_courbe_data(date):
     chrome_options.add_argument("--headless")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
-    
-    # Use WebDriver Manager to handle ChromeDriver installation
+
+    # Use WebDriver Manager to install the correct version of ChromeDriver
     service = Service(ChromeDriverManager().install())
     
     # Initialize Selenium WebDriver with headless Chrome
@@ -140,7 +140,6 @@ def get_courbe_data(date):
     courbe_data['tmp'] = courbe_data['tmp'].str.replace(',', '.').str.rstrip('%').astype(float) / 100
 
     return courbe_data
-
 # # Example usage:
 # date_input = pd.to_datetime("2023-07-20")
 # date_input= pd.to_datetime(date_input)
