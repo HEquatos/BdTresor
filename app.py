@@ -72,51 +72,71 @@ def get_maturite_days(maturite_years):
 #Maintenant on ouvre la courbe lié à la DC voulue par le trader. Elle va 
 # permettre d'obtenir le taux à la courbe à partir de la DV choisie
 
+import streamlit as st
 import pandas as pd
-import requests
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from webdriver_manager.chrome import ChromeDriverManager
 from io import StringIO
+import time
+import functools
 
+# Cache the function to avoid fetching the same data repeatedly
 @functools.lru_cache(maxsize=128)  # Maxsize sets the number of function calls to cache
 def get_courbe_data(date):
-    
     # Format the date as DD%2FMM%2FYYYY
     formatted_date = date.strftime("%d%%2F%m%%2F%Y")
-
     
+    # Set up Chrome options for headless mode
+    chrome_options = Options()
+    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    
+    # Use WebDriver Manager to handle ChromeDriver installation
+    service = Service(ChromeDriverManager().install())
+    
+    # Initialize Selenium WebDriver with headless Chrome
+    driver = webdriver.Chrome(service=service, options=chrome_options)
+    
+    # URL to fetch data
     url = f"https://www.bkam.ma/Marches/Principaux-indicateurs/Marche-obligataire/Marche-des-bons-de-tresor/Marche-secondaire/Taux-de-reference-des-bons-du-tresor?date={formatted_date}&block=e1d6b9bbf87f86f8ba53e8518e882982#address-c3367fcefc5f524397748201aee5dab8-e1d6b9bbf87f86f8ba53e8518e882982"
 
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-    }
+    # Load the page with Selenium
+    driver.get(url)
 
-    response = requests.get(url, headers=headers)
+    # Wait for the page to fully load (you can adjust this delay)
+    time.sleep(3)
 
-    # Log response details for debugging
-    print(f"Response status: {response.status_code}")
-    print(f"Response text: {response.text}")
+    # Get the page's HTML content
+    html_content = driver.page_source
 
-    if response.status_code == 200:
-        dfs = pd.read_html(StringIO(response.text))
-    else:
-        print(f"Failed to fetch data: HTTP {response.status_code}")
-    courbe_data=dfs[0]
-    # Drop the last row because its not a date but total
+    # Close the browser
+    driver.quit()
+
+    # Use pandas to parse HTML and extract tables
+    dfs = pd.read_html(StringIO(html_content))
+
+    # Handle the fetched data
+    courbe_data = dfs[0]
+    
+    # Drop the last row because it doesn't contain relevant data
     courbe_data.drop(courbe_data.index[-1], inplace=True)
     
     # Rename columns to match the desired names
     courbe_data.rename(columns={
-            "Date d'échéance": 'Date echeance',
-            'Date de la valeur': 'Date de la valeur',
-            'Taux moyen pondéré': 'tmp',
-            'Transaction': 'Transaction',
-        }, inplace=True)
+        "Date d'échéance": 'Date echeance',
+        'Date de la valeur': 'Date de la valeur',
+        'Taux moyen pondéré': 'tmp',
+        'Transaction': 'Transaction',
+    }, inplace=True)
 
-    
-    # Convert the date columns to datetime objects
+    # Convert date columns to datetime objects
     courbe_data['Date echeance'] = pd.to_datetime(courbe_data['Date echeance'], format='%d/%m/%Y')
     courbe_data['Date de la valeur'] = pd.to_datetime(courbe_data['Date de la valeur'], format='%d/%m/%Y')
-    
-    # Convert the 'tmp' column to numeric (float) values and convert percentages to fractions
+
+    # Convert 'tmp' column to numeric (float) values and convert percentages to fractions
     courbe_data['tmp'] = courbe_data['tmp'].str.replace(',', '.').str.rstrip('%').astype(float) / 100
 
     return courbe_data
