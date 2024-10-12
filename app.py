@@ -91,11 +91,14 @@ def get_courbe_data(date):
 
     response = requests.get(url, headers=headers)
 
+    # Log response details for debugging
+    print(f"Response status: {response.status_code}")
+    print(f"Response text: {response.text}")
+
     if response.status_code == 200:
-        # Pass the response content to pd.read_html
         dfs = pd.read_html(StringIO(response.text))
     else:
-        print(f"Error fetching data: {response.status_code}")
+        print(f"Failed to fetch data: HTTP {response.status_code}")
     courbe_data=dfs[0]
     # Drop the last row because its not a date but total
     courbe_data.drop(courbe_data.index[-1], inplace=True)
