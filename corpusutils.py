@@ -9,7 +9,7 @@ import numpy as np
 
 # On ouvre la base de donnée de teleajdu une fois pour optimiser le temps de calcul
 def open_amc_db(filepath):
-    db=pd.read_excel(filepath)
+    db=pd.read_excel(filepath, engine='xlrd')
     # Create a new column 'New Column' with the sliced characters
     db['AMC'] = db['Code ISIN'].str[5:11]
     # Create a mapping for renaming the columns
