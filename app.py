@@ -72,6 +72,9 @@ def get_maturite_days(maturite_years):
 #Maintenant on ouvre la courbe lié à la DC voulue par le trader. Elle va 
 # permettre d'obtenir le taux à la courbe à partir de la DV choisie
 
+import pandas as pd
+import requests
+from io import StringIO
 
 @functools.lru_cache(maxsize=128)  # Maxsize sets the number of function calls to cache
 def get_courbe_data(date):
@@ -79,11 +82,20 @@ def get_courbe_data(date):
     # Format the date as DD%2FMM%2FYYYY
     formatted_date = date.strftime("%d%%2F%m%%2F%Y")
 
-    # Construct the URL using the formatted date
+    
     url = f"https://www.bkam.ma/Marches/Principaux-indicateurs/Marche-obligataire/Marche-des-bons-de-tresor/Marche-secondaire/Taux-de-reference-des-bons-du-tresor?date={formatted_date}&block=e1d6b9bbf87f86f8ba53e8518e882982#address-c3367fcefc5f524397748201aee5dab8-e1d6b9bbf87f86f8ba53e8518e882982"
 
-    # Read HTML tables from the URL
-    dfs = pd.read_html(url)
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
+
+    response = requests.get(url, headers=headers)
+
+    if response.status_code == 200:
+        # Pass the response content to pd.read_html
+        dfs = pd.read_html(StringIO(response.text))
+    else:
+        print(f"Error fetching data: {response.status_code}")
     courbe_data=dfs[0]
     # Drop the last row because its not a date but total
     courbe_data.drop(courbe_data.index[-1], inplace=True)
