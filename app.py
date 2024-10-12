@@ -6,7 +6,9 @@ from test import get_duree_dernier_coupon, present_value, dirty_price,clean_pric
 from corpusutils import open_amc_db, open_portfolio
 from bs4 import BeautifulSoup
 import bs4
-
+# we want to ignore future depreciation warnings
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
 # On ouvre la base de donnée teleadju et on la traite Elle va être utile 
 # avec l'AMC pour trouver la date decheance donc la maturité resiudelle
@@ -72,74 +74,57 @@ def get_maturite_days(maturite_years):
 #Maintenant on ouvre la courbe lié à la DC voulue par le trader. Elle va 
 # permettre d'obtenir le taux à la courbe à partir de la DV choisie
 
-import streamlit as st
 import pandas as pd
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from webdriver_manager.chrome import ChromeDriverManager
+import requests
 from io import StringIO
-import time
-import functools
+from urllib.parse import quote
 
-# Cache the function to avoid fetching the same data repeatedly
-@functools.lru_cache(maxsize=128)  # Maxsize sets the number of function calls to cache
 def get_courbe_data(date):
-    # Format the date as DD%2FMM%2FYYYY
-    formatted_date = date.strftime("%d%%2F%m%%2F%Y")
+    # Format the date as DD%2FMM%2FYYYY and URL-encode it
+    formatted_date = date.strftime("%d/%m/%Y")
+    encoded_date = quote(formatted_date, safe='')
+
+    # Construct the URL for downloading the CSV
+    url = f"https://www.bkam.ma/export/blockcsv/2340/c3367fcefc5f524397748201aee5dab8/e1d6b9bbf87f86f8ba53e8518e882982?date={encoded_date}&block=e1d6b9bbf87f86f8ba53e8518e882982"
+
+    # Send a GET request to download the CSV
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
     
-    # Set up Chrome options for headless mode
-    chrome_options = Options()
-    chrome_options.add_argument("--headless")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
+    response = requests.get(url, headers=headers)
 
-    # Use WebDriver Manager to install the correct version of ChromeDriver
-    service = Service(ChromeDriverManager().install())
-    
-    # Initialize Selenium WebDriver with headless Chrome
-    driver = webdriver.Chrome(service=service, options=chrome_options)
-    
-    # URL to fetch data
-    url = f"https://www.bkam.ma/Marches/Principaux-indicateurs/Marche-obligataire/Marche-des-bons-de-tresor/Marche-secondaire/Taux-de-reference-des-bons-du-tresor?date={formatted_date}&block=e1d6b9bbf87f86f8ba53e8518e882982#address-c3367fcefc5f524397748201aee5dab8-e1d6b9bbf87f86f8ba53e8518e882982"
+    # Check if the response is successful
+    if response.status_code == 200:
+        # Load the CSV data into a DataFrame
+        csv_data = StringIO(response.content.decode('utf-8'))
+        courbe_data = pd.read_csv(csv_data, sep=';', skiprows=2)
 
-    # Load the page with Selenium
-    driver.get(url)
+        # Drop the last row because it contains the "Total"
+        courbe_data.drop(courbe_data.tail(1).index, inplace=True)
 
-    # Wait for the page to fully load (you can adjust this delay)
-    time.sleep(3)
+        # Rename columns for better readability
+        courbe_data.rename(columns={
+            "Date d'échéance": 'Date echeance',
+            'Date de la valeur': 'Date de la valeur',
+            'Taux moyen pondéré': 'tmp',
+            'Transaction': 'Transaction',
+        }, inplace=True)
 
-    # Get the page's HTML content
-    html_content = driver.page_source
+        # Convert the date columns to datetime objects
+        courbe_data['Date echeance'] = pd.to_datetime(courbe_data['Date echeance'], format='%d/%m/%Y')
+        courbe_data['Date de la valeur'] = pd.to_datetime(courbe_data['Date de la valeur'], format='%d/%m/%Y')
 
-    # Close the browser
-    driver.quit()
+        # Clean the 'tmp' column (Taux moyen pondéré) and convert it to float
+        courbe_data['tmp'] = courbe_data['tmp'].str.replace(',', '.').str.rstrip('%').astype(float) / 100
 
-    # Use pandas to parse HTML and extract tables
-    dfs = pd.read_html(StringIO(html_content))
+        return courbe_data
 
-    # Handle the fetched data
-    courbe_data = dfs[0]
-    
-    # Drop the last row because it doesn't contain relevant data
-    courbe_data.drop(courbe_data.index[-1], inplace=True)
-    
-    # Rename columns to match the desired names
-    courbe_data.rename(columns={
-        "Date d'échéance": 'Date echeance',
-        'Date de la valeur': 'Date de la valeur',
-        'Taux moyen pondéré': 'tmp',
-        'Transaction': 'Transaction',
-    }, inplace=True)
+    else:
+        print(f"Failed to download CSV. HTTP status code: {response.status_code}")
+        return None
 
-    # Convert date columns to datetime objects
-    courbe_data['Date echeance'] = pd.to_datetime(courbe_data['Date echeance'], format='%d/%m/%Y')
-    courbe_data['Date de la valeur'] = pd.to_datetime(courbe_data['Date de la valeur'], format='%d/%m/%Y')
 
-    # Convert 'tmp' column to numeric (float) values and convert percentages to fractions
-    courbe_data['tmp'] = courbe_data['tmp'].str.replace(',', '.').str.rstrip('%').astype(float) / 100
-
-    return courbe_data
 # # Example usage:
 # date_input = pd.to_datetime("2023-07-20")
 # date_input= pd.to_datetime(date_input)
@@ -250,128 +235,122 @@ class SessionState:
 
 
 def main():
-    # interpolated_rate=0
-
     # Titre en grand Pricer bons du trésor
     st.title("Pricer bons du trésor")
 
     # Champ d'entrée pour l'AMC
     amc = st.text_input("Entrez l'AMC de l'obligation")
-    
 
     # Champ d'entrée pour la date de valorisation
     date_valeur = st.date_input("Sélectionnez la date de valorisation")
 
     # Champ d'entrée pour la date de courbe
     date_courbe = st.date_input("Sélectionnez la date de la courbe des taux")
+
     if amc:
-        bond_maturity=get_maturite_residuellle(amc,date_valeur)
+        bond_maturity = get_maturite_residuellle(amc, date_valeur)
         taux_nominal = get_taux_nominal(amc)
-        date_echeance=get_echeance(amc)
+        date_echeance = get_echeance(amc)
         nominal = 100000
-        date_emission= get_emission(amc)
+        date_emission = get_emission(amc)
+
         if not isinstance(taux_nominal, float):
-            taux_nominal= float(taux_nominal.replace(',', '.'))
-        
+            taux_nominal = float(taux_nominal.replace(',', '.'))
+
         try:
-            
             taux_courbe = get_taux_courbe(date_courbe, bond_maturity, date_valeur)
-            print("taux courbe", taux_courbe)
             st.success(f"Le taux de rendement de l'obligation à la COURBE est : {taux_courbe:.4%}")
-            taux_courbe_100= taux_courbe/100
-            
         except Exception as e:
             st.error(f"Message d'erreur : {e}")
-            
-        # Display the table header
-        st.subheader("Table des bornes pour l'interpolation")
-        
+            taux_courbe = None  # Ensure taux_courbe is set even if there's an error
+
         # Create the DataFrame for the table
-        table_data = pd.DataFrame(columns=["Maturité (années)", "Maturité (jours)", "Taux(%)"])
-        
+        table_data = pd.DataFrame(columns=["Maturité (années)", "Maturité (jours)", "Taux(%)", "Description"])
         
         lower_maturity, upper_maturity = bornes_interpolation(bond_maturity)
-        
+
         # Calculate the days for bond_maturity and bounds
         bond_maturity_days = get_maturite_days(bond_maturity)
         lower_maturity_days = get_maturite_days(lower_maturity)
         upper_maturity_days = get_maturite_days(upper_maturity)
-        
-        lower_maturity_string= hash_maturity_to_string(lower_maturity)
-        upper_maturity_string= hash_maturity_to_string(upper_maturity)
-        
-        lower_rate=None
-        upper_rate= None
-        interpolated_rate=None
-        
-        if lower_rate is None:
-            table_data = table_data.append({"Maturité (années)": lower_maturity_string, "Maturité (jours)": lower_maturity_days, "Taux(%)": 0.0}, ignore_index=True)
 
-        if upper_rate is None and interpolated_rate is None:
-            table_data = table_data.append({"Maturité (années)": bond_maturity, "Maturité (jours)": bond_maturity_days, "Taux(%)": 0.0}, ignore_index=True)
-            table_data = table_data.append({"Maturité (années)": upper_maturity_string, "Maturité (jours)": upper_maturity_days, "Taux(%)": 0.0}, ignore_index=True)
+        lower_maturity_string = hash_maturity_to_string(lower_maturity)
+        upper_maturity_string = hash_maturity_to_string(upper_maturity)
 
+        # Add rows to table_data (replacing append with pd.concat and handling string/numeric separation)
+        new_row = pd.DataFrame([{
+            "Maturité (années)": None,  # Using None for the string description, handled separately
+            "Maturité (jours)": lower_maturity_days,
+            "Taux(%)": 0.0,
+            "Description": lower_maturity_string
+        }])
+        table_data = pd.concat([table_data, new_row], ignore_index=True)
+
+        new_row = pd.DataFrame([{
+            "Maturité (années)": bond_maturity,
+            "Maturité (jours)": bond_maturity_days,
+            "Taux(%)": 0.0,
+            "Description": f"{bond_maturity:.2f} années"
+        }])
+        table_data = pd.concat([table_data, new_row], ignore_index=True)
+
+        new_row = pd.DataFrame([{
+            "Maturité (années)": None,
+            "Maturité (jours)": upper_maturity_days,
+            "Taux(%)": 0.0,
+            "Description": upper_maturity_string
+        }])
+        table_data = pd.concat([table_data, new_row], ignore_index=True)
 
         # Use session_state to get the rate values
-        lower_rate = st.number_input("Entrez le taux pour un "+ lower_maturity_string+"(Taux en %)", 
-                            min_value=None,  # Set to None to leave it unrestricted
-                            max_value=100.0,  # Set to None to leave it unrestricted
-                            step=0.0001,  # Set the step increment
-                            format="%.4f")  # Format the number to display 4 decimal places
+        lower_rate = st.number_input(f"Entrez le taux pour un {lower_maturity_string} (Taux en %)", 
+                                     min_value=None, max_value=100.0, step=0.0001, format="%.4f")
+        upper_rate = st.number_input(f"Entrez le taux pour un {upper_maturity_string} (Taux en %)", 
+                                     min_value=None, max_value=100.0, step=0.0001, format="%.4f")
 
-        upper_rate = st.number_input("Entrez le taux pour un "+str(upper_maturity_string)+"(Taux en %)", 
-                            min_value=None,  # Set to None to leave it unrestricted
-                            max_value=float(100),  # Set to None to leave it unrestricted
-                            step=0.0001,  # Set the step increment
-                            format="%.4f")  # Format the number to display 4 decimal places
+        # Update the DataFrame for the table with the new rate values
+        if lower_rate is not None:
+            table_data.loc[table_data['Description'] == lower_maturity_string, 'Taux(%)'] = lower_rate
 
-        # Calculate and display the interpolated rate for the bond maturity
-        if lower_rate:
-            # Now update the DataFrame for the table with the new rate values
-            table_data.loc[table_data['Maturité (années)'] == lower_maturity_string, 'Taux(%)'] = lower_rate
-        if upper_rate:
-            table_data.loc[table_data['Maturité (années)'] == upper_maturity_string, 'Taux(%)'] = upper_rate
-            
-        if lower_rate is not None  and upper_rate is not None :
-            
+        if upper_rate is not None:
+            table_data.loc[table_data['Description'] == upper_maturity_string, 'Taux(%)'] = upper_rate
+
+        interpolated_rate = None
+        if lower_rate is not None and upper_rate is not None:
             interpolated_rate = get_rate_interpolation(bond_maturity, lower_maturity, upper_maturity, lower_rate, upper_rate)
-
-            # Now update the DataFrame for the table with the new rate values
-
             table_data.loc[table_data['Maturité (années)'] == bond_maturity, 'Taux(%)'] = interpolated_rate
 
         # Display the updated table
-        st.table(table_data)
+        st.table(table_data[['Description', 'Maturité (jours)', 'Taux(%)']])
 
         if interpolated_rate:
-            
             st.success(f"TAUX DE RENDEMENT INTERPOLE : {interpolated_rate/100:.4%}")
-            
-            
-            
-            
-            
-            
+
         st.subheader("Pricing de l'obligation")
-        if interpolated_rate:
-            taux_trader= st.number_input("Entrez le taux que vous voulez pour ce titre", value= interpolated_rate, step=0.001,format="%.3f")
+
+        # Select the rate for the trader
+        if interpolated_rate is not None:
+            taux_trader = st.number_input("Entrez le taux que vous voulez pour ce titre", value=interpolated_rate, step=0.001, format="%.3f")
+        elif taux_courbe is not None:
+            taux_trader = st.number_input("Entrez le taux que vous voulez pour ce titre", value=taux_courbe, step=0.001, format="%.3f")
         else:
-            taux_trader= st.number_input("Entrez le taux que vous voulez pour ce titre", value= taux_courbe, step= 0.001,format="%.3f")
-            
-        taux_nominal_100= taux_nominal/100
-        taux_trader_100= taux_trader/100
-        
-        
-            
-        PV= present_value(taux_nominal_100, taux_trader_100, bond_maturity, nominal)
+            taux_trader = st.number_input("Entrez le taux que vous voulez pour ce titre", value=0.0, step=0.001, format="%.3f")
+
+        taux_nominal_100 = taux_nominal / 100
+        taux_trader_100 = taux_trader / 100
+
+        # Calculate Present Value, Dirty Price, and Clean Price
+        PV = present_value(taux_nominal_100, taux_trader_100, bond_maturity, nominal)
         st.success(f" Present Value : {PV} MAD")
-        
-        dirty=dirty_price(taux_nominal_100, taux_trader_100, bond_maturity, nominal,date_valeur,date_emission)
+
+        dirty = dirty_price(taux_nominal_100, taux_trader_100, bond_maturity, nominal, date_valeur, date_emission)
         st.success(f" Dirty Price : {dirty} MAD")
-        
-        clean = clean_price(taux_nominal_100, taux_trader_100, bond_maturity, nominal,date_valeur,date_emission)
+
+        clean = clean_price(taux_nominal_100, taux_trader_100, bond_maturity, nominal, date_valeur, date_emission)
         st.success(f" Clean Price : {clean} MAD")
-        
+
+
+
         #quantity = 0
         #quantity=st.number_input("Combien échangez-vous?", value=0)
 
